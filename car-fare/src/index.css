@@ -819,3 +819,154 @@
     color: var(--text);
     opacity: 0.7;
   }
+  /* Route Recommendation Styles */
+.route-recommendation-container {
+  background-color: var(--card-bg);
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 10px var(--shadow);
+  margin: 0 auto;
+}
+
+.destination-form {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.route-btn::before {
+  content: "🧭";
+  font-size: 24px;
+}
+
+.destination-info {
+  width: 100%;
+  background-color: var(--third);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 15px;
+}
+
+.destination-info h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+  text-align: right;
+}
+
+.destination-info p {
+  margin: 0;
+  text-align: right;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.route-options {
+  width: 100%;
+}
+
+.route-options h3 {
+  text-align: right;
+  font-size: 18px;
+  margin-bottom: 15px;
+}
+
+.route-options h4 {
+  text-align: right;
+  font-size: 16px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.recommended-option {
+  position: relative;
+  margin-bottom: 25px;
+}
+
+.recommended-badge {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  background-color: var(--success);
+  color: white;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 15px;
+  z-index: 1;
+}
+
+.route-option-card {
+  display: flex;
+  align-items: center;
+  background-color: var(--main);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 5px var(--shadow);
+  transition: all 0.2s ease;
+}
+
+.route-option-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px var(--shadow);
+}
+
+.route-option-card.recommended {
+  border: 2px solid var(--success);
+  background-color: var(--main);
+}
+
+.option-icon {
+  font-size: 24px;
+  margin-left: 15px;
+}
+
+.option-details {
+  flex: 1;
+  text-align: right;
+}
+
+.option-name {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.option-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+}
+
+.eco-friendly {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--success);
+}
+
+.navigate-now-btn, .select-option-btn {
+  min-width: auto;
+  padding: 5px 12px;
+  margin: 0;
+  font-size: 14px;
+  height: auto;
+}
+
+.navigate-now-btn {
+  background-color: var(--success);
+}
+
+.select-option-btn {
+  background-color: var(--info);
+}
+
+/* Make the route planner button match the other menu buttons */
+.menu-buttons .route-btn {
+  margin-top: 0;
+}

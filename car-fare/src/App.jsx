@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Chairs from "./Components/Chairs.jsx";
 import NearbyStation from "./Components/NearbyStation.jsx";
+import RouteRecommendation from "./Components/RouteRecommendation.jsx";
 
 const App = () => {
   const [activeView, setActiveView] = useState("menu");
@@ -93,7 +94,11 @@ const App = () => {
         <ul>
           {appHistory.slice(0, 3).map((item, index) => (
             <li key={index} onClick={() => setActiveView(item.view)}>
-              {item.view === "fare" ? "حساب الأجرة" : "البحث عن محطة"} -
+              {item.view === "fare" 
+                ? "حساب الأجرة" 
+                : item.view === "station" 
+                  ? "البحث عن محطة" 
+                  : "مخطط الرحلة"} -
               {new Date(item.timestamp).toLocaleTimeString("ar-SA", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -126,6 +131,12 @@ const App = () => {
           onClick={() => setActiveView("station")}
         >
           أقرب محطة
+        </button>
+        <button
+          className="menu-btn route-btn"
+          onClick={() => setActiveView("route")}
+        >
+          مخطط الرحلة
         </button>
       </div>
 
@@ -232,6 +243,17 @@ const App = () => {
               <h2>أقرب محطة</h2>
             </div>
             <NearbyStation />
+          </>
+        )}
+        {activeView === "route" && (
+          <>
+            <div className="view-header">
+              <button className="back-btn" onClick={goToMainMenu}>
+                العودة للقائمة الرئيسية
+              </button>
+              <h2>مخطط الرحلة</h2>
+            </div>
+            <RouteRecommendation />
           </>
         )}
       </div>

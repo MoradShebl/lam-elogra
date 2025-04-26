@@ -255,14 +255,12 @@ const NearbyStation = () => {
                   className="btn uber-btn" 
                   onClick={openUber}
                 >
-                  <span className="ride-app-icon">🚗</span>
                   Uber
                 </button>
                 <button 
                   className="btn careem-btn" 
                   onClick={openCareem}
                 >
-                  <span className="ride-app-icon">🚕</span>
                   Careem
                 </button>
               </div>
