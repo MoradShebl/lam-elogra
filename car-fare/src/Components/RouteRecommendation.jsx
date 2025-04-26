@@ -328,7 +328,7 @@ const RouteRecommendation = () => {
                   <div className="option-name">{recommendation.name}</div>
                   <div className="option-metrics">
                     <span>⏱️ {recommendation.time} دقيقة</span>
-                    <span>💰 {recommendation.cost} ريال</span>
+                    <span>💰 {recommendation.cost} جنيه</span>
                   </div>
                   {recommendation.sustainable && (
                     <div className="eco-friendly">♻️ صديق للبيئة</div>
@@ -353,7 +353,7 @@ const RouteRecommendation = () => {
                   <div className="option-name">{option.name}</div>
                   <div className="option-metrics">
                     <span>⏱️ {option.time} دقيقة</span>
-                    <span>💰 {option.cost} ريال</span>
+                    <span>💰 {option.cost} جنيه</span>
                     {option.calories > 0 && (
                       <span>🔥 {option.calories} سعرة حرارية</span>
                     )}
