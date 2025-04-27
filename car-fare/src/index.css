@@ -909,6 +909,7 @@
   margin-bottom: 10px;
   box-shadow: 0 2px 5px var(--shadow);
   transition: all 0.2s ease;
+  flex-direction: column;
 }
 
 .route-option-card:hover {
@@ -956,6 +957,7 @@
   margin: 0;
   font-size: 14px;
   height: auto;
+  width: 100%;
 }
 
 .navigate-now-btn {

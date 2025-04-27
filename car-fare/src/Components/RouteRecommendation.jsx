@@ -6,8 +6,9 @@ const RouteRecommendation = () => {
   const [destinationCoords, setDestinationCoords] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [routeOptions, setRouteOptions] = useState(null);
-  const [recommendation, setRecommendation] = useState(null);
+  const [routeOptions, setRouteOptions] = useState([]);
+  const [stations, setStations] = useState([]);
+  const [showMap, setShowMap] = useState(false);
 
   // Load cached location on mount
   useEffect(() => {
@@ -91,27 +92,98 @@ const RouteRecommendation = () => {
   // Fetch route options using OpenRouteService API
   const fetchRouteOptions = async (start, end) => {
     setLoading(true);
-    
+    setError(null);
     try {
-      // Simulate API response - in a real app you would use actual API
-      // Note: Free APIs like OpenRouteService require API keys and have usage limits
-      
-      const distance = calculateDistance(
-        start.latitude, start.longitude, 
-        end.latitude, end.longitude
-      );
-      
-      // Generate simulated route options based on distance
-      const options = generateRouteOptions(distance);
+      // Overpass API for public transport platforms near start and end
+      const overpass = async (lat, lon, type) => {
+        let filter = '[public_transport=platform]';
+        if (type === 'train') filter = '[railway=station]';
+        if (type === 'microbus') filter = '[minibus=yes]';
+        const url = `https://overpass-api.de/api/interpreter?data=[out:json];node(around:1500,${lat},${lon})${filter};out;`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("فشل جلب محطات النقل الحكومية");
+        const data = await res.json();
+        return (data.elements || []).map(e => ({
+          id: e.id,
+          name: e.tags.name || (type === 'train' ? "محطة قطار" : type === 'microbus' ? "محطة ميكروباص" : "محطة حكومية"),
+          latitude: e.lat,
+          longitude: e.lon,
+          type
+        }));
+      };
+      // Fetch all types
+      const [busStart, busEnd, trainStart, trainEnd, microbusStart, microbusEnd] = await Promise.all([
+        overpass(start.latitude, start.longitude, 'bus'),
+        overpass(end.latitude, end.longitude, 'bus'),
+        overpass(start.latitude, start.longitude, 'train'),
+        overpass(end.latitude, end.longitude, 'train'),
+        overpass(start.latitude, start.longitude, 'microbus'),
+        overpass(end.latitude, end.longitude, 'microbus'),
+      ]);
+      // Helper to find best pair
+      const findBestPair = (startArr, endArr, type, icon, label) => {
+        let bestPair = null;
+        let minDist = Infinity;
+        for (const s of startArr) {
+          for (const e of endArr) {
+            const d = calculateDistance(s.latitude, s.longitude, e.latitude, e.longitude);
+            if (d < minDist) {
+              minDist = d;
+              bestPair = { from: s, to: e, distance: d, type, icon, label };
+            }
+          }
+        }
+        return bestPair;
+      };
+      const busPair = findBestPair(busStart, busEnd, 'bus', '🚌', 'حافلة');
+      const trainPair = findBestPair(trainStart, trainEnd, 'train', '🚆', 'قطار');
+      const microbusPair = findBestPair(microbusStart, microbusEnd, 'microbus', '🚐', 'ميكروباص');
+      // Build options
+      const options = [];
+      if (busPair) {
+        options.push({
+          mode: 'bus',
+          icon: busPair.icon,
+          name: `من ${busPair.from.name} إلى ${busPair.to.name}`,
+          time: Math.round(busPair.distance * 3 + 10),
+          cost: 3 + Math.round(busPair.distance * 0.5),
+          from: busPair.from,
+          to: busPair.to,
+          distance: busPair.distance,
+          label: busPair.label
+        });
+      }
+      if (trainPair) {
+        options.push({
+          mode: 'train',
+          icon: trainPair.icon,
+          name: `من ${trainPair.from.name} إلى ${trainPair.to.name}`,
+          time: Math.round(trainPair.distance * 1.2 + 20),
+          cost: 5 + Math.round(trainPair.distance * 0.3),
+          from: trainPair.from,
+          to: trainPair.to,
+          distance: trainPair.distance,
+          label: trainPair.label
+        });
+      }
+      if (microbusPair) {
+        options.push({
+          mode: 'microbus',
+          icon: microbusPair.icon,
+          name: `من ${microbusPair.from.name} إلى ${microbusPair.to.name}`,
+          time: Math.round(microbusPair.distance * 2 + 8),
+          cost: 2 + Math.round(microbusPair.distance * 0.4),
+          from: microbusPair.from,
+          to: microbusPair.to,
+          distance: microbusPair.distance,
+          label: microbusPair.label
+        });
+      }
       setRouteOptions(options);
-      
-      // Generate AI recommendation based on options
-      const bestOption = recommendBestOption(options);
-      setRecommendation(bestOption);
-      
-    } catch (err) {
-      console.error("Error getting route options:", err);
-      setError("تعذر الحصول على خيارات المسار. يرجى المحاولة مرة أخرى لاحقًا.");
+      setStations([busPair?.from, busPair?.to]); // For map, prefer bus
+      setShowMap(true);
+    } catch {
+      setError("تعذر الحصول على خيارات النقل الحكومية. جرب مرة أخرى لاحقًا.");
     } finally {
       setLoading(false);
     }
@@ -134,101 +206,6 @@ const RouteRecommendation = () => {
     return deg * (Math.PI / 180);
   };
 
-  // Generate route options based on distance
-  const generateRouteOptions = (distance) => {
-    // Simulate different transportation options
-    const options = [
-      {
-        mode: "walking",
-        icon: "🚶",
-        name: "المشي",
-        time: Math.round(distance * 12), // minutes (5 km/h)
-        cost: 0,
-        calories: Math.round(distance * 65), // kcal
-        sustainable: true,
-        suitable: distance < 5 // Walking suitable for distances less than 5km
-      },
-      {
-        mode: "bicycle",
-        icon: "🚲",
-        name: "دراجة",
-        time: Math.round(distance * 4), // minutes (15 km/h)
-        cost: distance < 10 ? 5 : 10, // SAR (rental cost)
-        calories: Math.round(distance * 40), // kcal
-        sustainable: true,
-        suitable: distance < 15 // Biking suitable for distances less than 15km
-      },
-      {
-        mode: "bus",
-        icon: "🚌",
-        name: "حافلة",
-        time: Math.round(distance * 3 + 15), // minutes (20 km/h plus waiting time)
-        cost: 3 + Math.round(distance * 0.5), // SAR (base + per km)
-        calories: 0,
-        sustainable: true,
-        suitable: distance > 2 && distance < 30
-      },
-      {
-        mode: "taxi",
-        icon: "🚕",
-        name: "سيارة أجرة",
-        time: Math.round(distance * 1.5 + 5), // minutes (40 km/h plus waiting time)
-        cost: 10 + Math.round(distance * 2), // SAR (base + per km)
-        calories: 0,
-        sustainable: false,
-        suitable: true // Generally suitable for all distances
-      },
-      {
-        mode: "uber",
-        icon: "🚗",
-        name: "أوبر",
-        time: Math.round(distance * 1.5 + 8), // minutes (40 km/h plus waiting time)
-        cost: 8 + Math.round(distance * 1.8), // SAR (base + per km)
-        calories: 0,
-        sustainable: false,
-        suitable: true // Generally suitable for all distances
-      },
-      {
-        mode: "train",
-        icon: "🚆",
-        name: "قطار",
-        time: Math.round(distance * 1.2 + 20), // minutes (50 km/h plus waiting time)
-        cost: 5 + Math.round(distance * 0.3), // SAR (base + per km)
-        calories: 0,
-        sustainable: true,
-        suitable: distance > 5 && distance < 100 // Suitable for medium to long distances
-      }
-    ];
-    
-    // Filter to only include suitable options
-    return options.filter(option => option.suitable);
-  };
-
-  // AI recommendation algorithm
-  const recommendBestOption = (options) => {
-    if (!options || options.length === 0) return null;
-    
-    // Apply weighting to different factors
-    const weightedOptions = options.map(option => {
-      // Calculate weighted score based on time, cost, sustainability
-      const timeScore = 1 - (option.time / Math.max(...options.map(o => o.time)));
-      const costScore = 1 - (option.cost / Math.max(...options.map(o => o.cost || 1)));
-      const sustainabilityScore = option.sustainable ? 1 : 0;
-      
-      // Weighted score (customize weights based on preferences)
-      const score = (timeScore * 0.4) + (costScore * 0.4) + (sustainabilityScore * 0.2);
-      
-      return {
-        ...option,
-        score
-      };
-    });
-    
-    // Sort by score and return the best option
-    weightedOptions.sort((a, b) => b.score - a.score);
-    return weightedOptions[0];
-  };
-
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -244,35 +221,16 @@ const RouteRecommendation = () => {
   // Navigate using the recommended option
   const navigateWithOption = (option) => {
     if (!userLocation || !destinationCoords) return;
-    
     let url;
-    
-    switch(option.mode) {
-      case "walking":
-        url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destinationCoords.latitude},${destinationCoords.longitude}&travelmode=walking`;
-        break;
-      case "bicycle":
-        url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destinationCoords.latitude},${destinationCoords.longitude}&travelmode=bicycling`;
-        break;
-      case "bus":
-      case "train":
-        url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destinationCoords.latitude},${destinationCoords.longitude}&travelmode=transit`;
-        break;
-      case "uber":
-        url = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${userLocation.latitude}&pickup[longitude]=${userLocation.longitude}&dropoff[latitude]=${destinationCoords.latitude}&dropoff[longitude]=${destinationCoords.longitude}`;
-        break;
-      case "taxi":
-      default:
-        url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destinationCoords.latitude},${destinationCoords.longitude}&travelmode=driving`;
-        break;
+    if ((option.mode === "bus" || option.mode === "train" || option.mode === "microbus") && option.from && option.to) {
+      url = `https://www.google.com/maps/dir/?api=1&origin=${option.from.latitude},${option.from.longitude}&destination=${option.to.latitude},${option.to.longitude}&travelmode=transit`;
     }
-    
-    window.open(url, "_blank");
+    if (url) window.open(url, "_blank");
   };
 
   return (
-    <div className="route-recommendation-container">
-      <h2>مخطط الرحلة</h2>
+    <div className="route-recommendation-container enhanced-ui">
+      <h2>مخطط الرحلة الذكي</h2>
       
       <form onSubmit={handleSubmit} className="destination-form">
         <div className="input-group">
@@ -291,14 +249,14 @@ const RouteRecommendation = () => {
           className="btn route-btn"
           disabled={loading}
         >
-          {!userLocation ? "تحديد الموقع والبحث" : "البحث عن طرق"}
+          {!userLocation ? "تحديد الموقع والبحث" : "بحث عن طرق حكومية وذكية"}
         </button>
       </form>
       
       {loading && (
         <div className="loading">
           <div className="spinner"></div>
-          <p>جاري البحث...</p>
+          <p>جاري البحث عن أفضل الطرق...</p>
         </div>
       )}
       
@@ -315,54 +273,35 @@ const RouteRecommendation = () => {
         </div>
       )}
       
+      {showMap && stations[0] && stations[1] && (
+        <div className="map-container">
+          <iframe
+            src={`https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(stations[0].longitude, stations[1].longitude) - 0.01},${Math.min(stations[0].latitude, stations[1].latitude) - 0.01},${Math.max(stations[0].longitude, stations[1].longitude) + 0.01},${Math.max(stations[0].latitude, stations[1].latitude) + 0.01}&layer=mapnik&marker=${stations[0].latitude},${stations[0].longitude}`}
+            width="100%"
+            height="200"
+            frameBorder="0"
+            title="Route Map"
+            loading="lazy"
+          ></iframe>
+        </div>
+      )}
+      
       {routeOptions && routeOptions.length > 0 && (
-        <div className="route-options">
-          <h3>خيارات التنقل</h3>
-          
-          {recommendation && (
-            <div className="recommended-option">
-              <div className="recommended-badge">الخيار الأفضل</div>
-              <div className="route-option-card recommended">
-                <div className="option-icon">{recommendation.icon}</div>
-                <div className="option-details">
-                  <div className="option-name">{recommendation.name}</div>
-                  <div className="option-metrics">
-                    <span>⏱️ {recommendation.time} دقيقة</span>
-                    <span>💰 {recommendation.cost} جنيه</span>
-                  </div>
-                  {recommendation.sustainable && (
-                    <div className="eco-friendly">♻️ صديق للبيئة</div>
-                  )}
-                </div>
-                <button 
-                  className="btn navigate-now-btn"
-                  onClick={() => navigateWithOption(recommendation)}
-                >
-                  اذهب الآن
-                </button>
-              </div>
-            </div>
-          )}
-          
-          <div className="all-options">
-            <h4>جميع الخيارات</h4>
+        <div className="route-options enhanced-options">
+          <h3>خيارات النقل الحكومي المتاحة</h3>
+          <div className="options-list">
             {routeOptions.map((option, index) => (
-              <div className="route-option-card" key={index}>
+              <div className={`route-option-card modern-card gov-card`} key={index}>
                 <div className="option-icon">{option.icon}</div>
                 <div className="option-details">
                   <div className="option-name">{option.name}</div>
                   <div className="option-metrics">
                     <span>⏱️ {option.time} دقيقة</span>
-                    <span>💰 {option.cost} جنيه</span>
-                    {option.calories > 0 && (
-                      <span>🔥 {option.calories} سعرة حرارية</span>
-                    )}
+                    <span>💰 {option.cost} ريال</span>
                   </div>
+                  <div className="gov-label">🚏 {option.label}</div>
                 </div>
-                <button 
-                  className="btn select-option-btn"
-                  onClick={() => navigateWithOption(option)}
-                >
+                <button className="btn select-option-btn" onClick={() => navigateWithOption(option)}>
                   اختيار
                 </button>
               </div>
