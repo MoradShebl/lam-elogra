@@ -27,6 +27,7 @@
   
   * {
     box-sizing: border-box;
+    direction: rtl;
     font-family: -apple-system, "SF Pro AR", "SF Pro Arabic", "Geeza Pro", "Dubai", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   }
   
@@ -95,7 +96,6 @@
     align-items: center;
     width: 100%;
     margin-bottom: 20px;
-    flex-direction: row-reverse;
   }
   
   .theme-toggle {
@@ -357,7 +357,6 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
   }
   
   /* Station Container Styles */
@@ -458,7 +457,6 @@
     font-weight: 600;
     border-bottom: 1px solid var(--third);
     margin-bottom: 15px;
-    flex-direction: row-reverse;
   }
   
   .balance-amount {
@@ -471,7 +469,6 @@
   
   .checkboxes {
     display: flex;
-    flex-direction: row-reverse;
     justify-content: space-around;
     list-style: none;
     padding: 0;
@@ -521,7 +518,6 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-direction: row-reverse;
   }
   
   .amounts-display input[type="number"] {

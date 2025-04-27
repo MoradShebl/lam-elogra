@@ -1,35 +1,59 @@
 import { useState, useEffect } from "react";
 
+const STATION_QUERIES = [
+  '[public_transport=platform]',
+  '[railway=station]',
+  '[bus=yes]',
+  '[subway=yes]',
+  '[tram=yes]',
+  '[station=yes]'
+];
+const RADIUS_STEPS = [1000, 2000, 5000];
+
+const getStationType = (tags) => {
+  if (tags.subway === 'yes') return 'مترو';
+  if (tags.tram === 'yes') return 'ترام';
+  if (tags.railway === 'station') return 'قطار';
+  if (tags.bus === 'yes') return 'حافلة';
+  if (tags.public_transport === 'platform') return 'منصة نقل';
+  if (tags.station === 'yes') return 'محطة';
+  return 'محطة';
+};
+
+const formatDistance = (km) => {
+  if (km < 1) return `${Math.round(km * 1000)} متر`;
+  return `${km.toFixed(2)} كم`;
+};
+
 const NearbyStation = () => {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [nearestStation, setNearestStation] = useState(null);
+  const [stations, setStations] = useState([]);
+  const [selectedStation, setSelectedStation] = useState(null);
   const [lastSearchTimestamp, setLastSearchTimestamp] = useState(null);
-  
-  // Load cached location on mount
+  const [searchRadius, setSearchRadius] = useState(RADIUS_STEPS[0]);
+
   useEffect(() => {
     const cachedLocation = localStorage.getItem('userLocation');
-    const cachedStation = localStorage.getItem('nearestStation');
+    const cachedStations = localStorage.getItem('nearbyStations');
     const cachedTimestamp = localStorage.getItem('lastSearchTimestamp');
-    
-    if (cachedLocation && cachedStation && cachedTimestamp) {
-      // Only use cached data if it's less than 1 hour old
+    if (cachedLocation && cachedStations && cachedTimestamp) {
       const now = new Date().getTime();
       if (now - parseInt(cachedTimestamp) < 3600000) {
         setLocation(JSON.parse(cachedLocation));
-        setNearestStation(JSON.parse(cachedStation));
+        setStations(JSON.parse(cachedStations));
         setLastSearchTimestamp(cachedTimestamp);
       }
     }
   }, []);
 
-  const findNearestStation = async () => {
+  const findNearbyStations = async (radiusIndex = 0) => {
     setLoading(true);
     setError(null);
-    
+    setStations([]);
+    setSelectedStation(null);
     try {
-      // Request user location
       const position = await new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
@@ -37,98 +61,52 @@ const NearbyStation = () => {
           maximumAge: 0
         });
       });
-      
       const { latitude, longitude } = position.coords;
       const newLocation = { latitude, longitude };
       setLocation(newLocation);
-      
-      // Cache the location
       localStorage.setItem('userLocation', JSON.stringify(newLocation));
-      
-      // Using OSM's Overpass API to find nearby stations
-      const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node(around:1000,${latitude},${longitude})[public_transport=platform];out;`;
-      
-      const response = await fetch(overpassUrl);
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch nearby stations");
+      let allStations = [];
+      for (const query of STATION_QUERIES) {
+        const url = `https://overpass-api.de/api/interpreter?data=[out:json];node(around:${RADIUS_STEPS[radiusIndex]},${latitude},${longitude})${query};out;`;
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (data && data.elements && data.elements.length > 0) {
+          allStations = allStations.concat(data.elements.map(element => ({
+            id: element.id,
+            name: element.tags.name || 'محطة بدون اسم',
+            latitude: element.lat,
+            longitude: element.lon,
+            distance: calculateDistance(latitude, longitude, element.lat, element.lon),
+            type: getStationType(element.tags)
+          })));
+        }
       }
-      
-      const data = await response.json();
-      
-      if (data && data.elements && data.elements.length > 0) {
-        // Find the nearest station
-        const stations = data.elements.map(element => ({
-          id: element.id,
-          name: element.tags.name || "محطة بدون اسم",
-          latitude: element.lat,
-          longitude: element.lon,
-          distance: calculateDistance(latitude, longitude, element.lat, element.lon)
-        }));
-        
-        // Sort by distance
-        stations.sort((a, b) => a.distance - b.distance);
-        
-        // Select the nearest
-        const nearest = stations[0];
-        const stationData = {
-          name: nearest.name,
-          distance: nearest.distance.toFixed(2),
-          latitude: nearest.latitude,
-          longitude: nearest.longitude
-        };
-        
-        setNearestStation(stationData);
-        
-        // Cache the station and timestamp
-        const now = new Date().getTime();
-        localStorage.setItem('nearestStation', JSON.stringify(stationData));
-        localStorage.setItem('lastSearchTimestamp', now.toString());
-        setLastSearchTimestamp(now.toString());
-      } else {
-        // Fallback to a simulated station if none found
-        const stationData = {
-          name: "محطة قريبة",
-          distance: "0.35",
-          latitude: latitude + 0.002,
-          longitude: longitude + 0.001
-        };
-        
-        setNearestStation(stationData);
-        
-        // Cache the station and timestamp
-        const now = new Date().getTime();
-        localStorage.setItem('nearestStation', JSON.stringify(stationData));
-        localStorage.setItem('lastSearchTimestamp', now.toString());
-        setLastSearchTimestamp(now.toString());
+      // Remove duplicates by id
+      const uniqueStations = Object.values(allStations.reduce((acc, s) => {
+        acc[s.id] = s;
+        return acc;
+      }, {}));
+      uniqueStations.sort((a, b) => a.distance - b.distance);
+      if (uniqueStations.length === 0 && radiusIndex < RADIUS_STEPS.length - 1) {
+        // Try next radius
+        setSearchRadius(RADIUS_STEPS[radiusIndex + 1]);
+        return findNearbyStations(radiusIndex + 1);
       }
+      if (uniqueStations.length === 0) {
+        setError('لم يتم العثور على محطات قريبة. جرب موقعاً آخر أو تحقق من اتصالك بالإنترنت.');
+        setStations([]);
+        return;
+      }
+      setStations(uniqueStations.slice(0, 5));
+      setSelectedStation(uniqueStations[0]);
+      const now = new Date().getTime();
+      localStorage.setItem('nearbyStations', JSON.stringify(uniqueStations.slice(0, 5)));
+      localStorage.setItem('lastSearchTimestamp', now.toString());
+      setLastSearchTimestamp(now.toString());
     } catch (err) {
-      console.error("Error fetching stations:", err);
-      
-      if (err.code === 1) {
-        setError("تم رفض إذن الموقع. الرجاء تمكين خدمات الموقع.");
-      } else if (err.code === 2) {
-        setError("الموقع غير متوفر. يرجى المحاولة مرة أخرى لاحقًا.");
-      } else if (err.code === 3) {
-        setError("انتهت مهلة طلب الموقع. يرجى المحاولة مرة أخرى.");
-      } else {
-        // Simulate a station to show UI functionality even when there's an error
-        const simulatedLocation = { 
-          latitude: 24.7136, // Example coordinates
-          longitude: 46.6753
-        };
-        
-        const stationData = {
-          name: "محطة افتراضية",
-          distance: "0.50",
-          latitude: 24.7156,
-          longitude: 46.6773
-        };
-        
-        setLocation(simulatedLocation);
-        setNearestStation(stationData);
-        setError("تم تعيين موقع افتراضي للعرض");
-      }
+      setError('تعذر الحصول على المحطات القريبة. يرجى المحاولة مرة أخرى.');
+      setStations([]);
     } finally {
       setLoading(false);
     }
@@ -147,132 +125,102 @@ const NearbyStation = () => {
     return R * c; // Distance in km
   };
 
-  const deg2rad = (deg) => {
-    return deg * (Math.PI / 180);
-  };
+  const deg2rad = (deg) => deg * (Math.PI / 180);
 
   // Navigation options
-  const navigateToStation = () => {
-    if (nearestStation) {
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${nearestStation.latitude},${nearestStation.longitude}&travelmode=walking`;
+  const navigateToStation = (station) => {
+    if (station) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${station.latitude},${station.longitude}&travelmode=walking`;
       window.open(url, "_blank");
-    }
-  };
-
-  const openUber = () => {
-    if (location && nearestStation) {
-      const uberDeepLink = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${location.latitude}&pickup[longitude]=${location.longitude}&dropoff[latitude]=${nearestStation.latitude}&dropoff[longitude]=${nearestStation.longitude}`;
-      window.open(uberDeepLink, "_blank");
-    }
-  };
-
-  const openCareem = () => {
-    if (location && nearestStation) {
-      const careemUrl = `https://app.careem.com/rides?pickup=${location.latitude},${location.longitude}&dropoff=${nearestStation.latitude},${nearestStation.longitude}`;
-      window.open(careemUrl, "_blank");
     }
   };
 
   // Format timestamp to readable time
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return null;
-    
     const date = new Date(parseInt(timestamp));
-    return date.toLocaleTimeString('ar-SA', { 
-      hour: '2-digit', 
-      minute: '2-digit'
-    });
+    return date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Map markers for all stations
+  const getMapMarkers = () => {
+    if (!stations.length) return '';
+    return stations.map(s => `marker=${s.latitude},${s.longitude}`).join('&');
   };
 
   return (
     <div className="station-container">
-      <h2>أقرب محطة</h2>
-      
+      <h2>أقرب المحطات</h2>
       {!loading && (
-        <button 
-          className={`btn station-btn ${nearestStation ? 'refresh-btn' : ''}`}
-          onClick={findNearestStation}
+        <button
+          className={`btn station-btn ${stations.length ? 'refresh-btn' : ''}`}
+          onClick={() => findNearbyStations()}
         >
-          {nearestStation ? 'تحديث الموقع' : 'البحث عن أقرب محطة'}
+          {stations.length ? 'تحديث الموقع' : 'البحث عن أقرب المحطات'}
         </button>
       )}
-      
-      {lastSearchTimestamp && nearestStation && (
+      {lastSearchTimestamp && stations.length > 0 && (
         <div className="last-update">
           آخر تحديث: {formatTimestamp(lastSearchTimestamp)}
         </div>
       )}
-      
       {loading && (
         <div className="loading">
           <div className="spinner"></div>
           <p>جاري البحث...</p>
         </div>
       )}
-      
       {error && (
-        <div className="error-message">
+        <div className="error-message" style={{margin: '20px 0', padding: '16px', borderRadius: '8px', background: '#fff0f0', color: '#b71c1c', textAlign: 'center'}}>
           <p>{error}</p>
+          <button className="btn station-btn" onClick={() => findNearbyStations()} style={{marginTop: 10}}>إعادة المحاولة</button>
         </div>
       )}
-      
-      {nearestStation && (
+      {stations.length > 0 && (
         <>
-          <div className="station-info">
-            <div className="station-card">
-              <div className="station-name">
-                <span>المحطة:</span>
-                <strong>{nearestStation.name}</strong>
-              </div>
-              <div className="station-distance">
-                <span>المسافة:</span>
-                <strong>{nearestStation.distance} كم</strong>
-              </div>
-            </div>
-            
-            {/* Embedded Map */}
-            <div className="map-container">
-              <iframe 
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${nearestStation.longitude - 0.005},${nearestStation.latitude - 0.005},${nearestStation.longitude + 0.005},${nearestStation.latitude + 0.005}&layer=mapnik&marker=${nearestStation.latitude},${nearestStation.longitude}`}
-                width="100%" 
-                height="200" 
-                frameBorder="0" 
-                title="Station Map"
-                loading="lazy"
-              ></iframe>
-            </div>
-            
-            <div className="navigation-options">
-              <button 
-                className="btn navigate-btn" 
-                onClick={navigateToStation}
+          <div className="station-info" style={{marginTop: 10}}>
+            {stations.map((station, idx) => (
+              <div
+                className={`station-card${selectedStation && selectedStation.id === station.id ? ' selected' : ''}`}
+                key={station.id}
+                style={{marginBottom: 12, border: selectedStation && selectedStation.id === station.id ? '2px solid var(--info)' : '1px solid var(--third)', cursor: 'pointer', background: selectedStation && selectedStation.id === station.id ? 'var(--third)' : 'var(--card-bg)'}}
+                onClick={() => setSelectedStation(station)}
+                tabIndex={0}
               >
-                الاتجاهات
-              </button>
-              
-              <div className="ride-sharing-buttons">
-                <button 
-                  className="btn uber-btn" 
-                  onClick={openUber}
+                <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                  <span style={{fontWeight: 600}}>{station.name}</span>
+                  <span style={{color: 'var(--info)', fontWeight: 500}}>{station.type}</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 4}}>
+                  <span>المسافة: {formatDistance(station.distance)}</span>
+                  {selectedStation && selectedStation.id === station.id && <span style={{color: 'var(--success)'}}>المحدد</span>}
+                </div>
+                <button
+                  className="btn navigate-btn"
+                  style={{marginTop: 8, width: '100%'}}
+                  onClick={e => { e.stopPropagation(); navigateToStation(station); }}
                 >
-                  Uber
-                </button>
-                <button 
-                  className="btn careem-btn" 
-                  onClick={openCareem}
-                >
-                  Careem
+                  الاتجاهات
                 </button>
               </div>
-            </div>
+            ))}
           </div>
-          
-          {/* Walking time estimate */}
-          <div className="walking-estimate">
-            <span className="walking-icon">🚶</span>
-            <span>
-              وقت المشي التقديري: {Math.ceil(nearestStation.distance * 15)} دقيقة
-            </span>
+          {/* Embedded Map with all markers */}
+          <div className="map-container" style={{marginTop: 10}}>
+            <iframe
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${stations.reduce((acc, s) => ([
+                Math.min(acc[0], s.longitude),
+                Math.min(acc[1], s.latitude),
+                Math.max(acc[2], s.longitude),
+                Math.max(acc[3], s.latitude)
+              ]), [stations[0].longitude - 0.01, stations[0].latitude - 0.01, stations[0].longitude + 0.01, stations[0].latitude + 0.01])}&layer=mapnik&${getMapMarkers()}`}
+              width="100%"
+              height="200"
+              frameBorder="0"
+              title="Stations Map"
+              loading="lazy"
+              style={{borderRadius: 8, border: '1px solid var(--third)'}}
+            ></iframe>
           </div>
         </>
       )}
