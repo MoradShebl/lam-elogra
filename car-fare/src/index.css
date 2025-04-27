@@ -972,3 +972,145 @@
 .menu-buttons .route-btn {
   margin-top: 0;
 }
+
+/* --- RouteRecommendation Visual Polish --- */
+.route-recommendation-container-polished {
+  background: linear-gradient(135deg, var(--main) 80%, var(--third) 100%);
+  border-radius: 18px;
+  box-shadow: 0 6px 32px var(--shadow);
+  padding: 32px 20px 28px 20px;
+  max-width: 370px;
+  margin: 0 auto;
+  transition: box-shadow 0.2s;
+}
+
+.route-recommendation-container-polished:focus-within {
+  box-shadow: 0 8px 40px var(--shadow);
+}
+
+.route-option-card-polished {
+  background: var(--main);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px var(--shadow);
+  padding: 22px 16px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeInCard 0.7s cubic-bezier(.23,1.01,.32,1) both;
+  border: 2px solid transparent;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+.route-option-card-polished.selected {
+  border: 2px solid var(--info);
+  background: linear-gradient(90deg, var(--third) 60%, var(--main) 100%);
+  box-shadow: 0 4px 18px var(--info);
+}
+
+.route-option-card-polished:hover {
+  box-shadow: 0 6px 18px var(--shadow);
+  border: 2px solid var(--second);
+}
+
+@keyframes fadeInCard {
+  0% { opacity: 0; transform: translateY(30px) scale(0.97); }
+  60% { opacity: 0.7; transform: translateY(8px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.select-option-btn-polished {
+  background: linear-gradient(90deg, var(--info) 60%, var(--second) 100%);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 8px;
+  font-size: 16px;
+  padding: 10px 0;
+  margin-top: 8px;
+  border: none;
+  box-shadow: 0 2px 8px var(--shadow);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.select-option-btn-polished:hover {
+  background: linear-gradient(90deg, var(--second) 60%, var(--info) 100%);
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.recent-destinations-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.recent-destination-pill {
+  background: var(--third);
+  color: var(--second);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid var(--second);
+  transition: background 0.2s, color 0.2s;
+}
+
+.recent-destination-pill:hover {
+  background: var(--second);
+  color: #fff;
+}
+
+.clear-btn-polished {
+  background: linear-gradient(90deg, var(--error) 60%, var(--warning) 100%);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 8px;
+  font-size: 15px;
+  padding: 8px 0;
+  margin-top: 10px;
+  border: none;
+  width: 100%;
+  box-shadow: 0 2px 8px var(--shadow);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.clear-btn-polished:hover {
+  background: linear-gradient(90deg, var(--warning) 60%, var(--error) 100%);
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.arrival-time-label {
+  font-size: 13px;
+  color: var(--success);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .route-recommendation-container-polished {
+    padding: 18px 4vw 18px 4vw;
+    max-width: 98vw;
+  }
+  .route-option-card-polished {
+    padding: 14px 6px;
+  }
+}
+
+/* Slide-down for empty state */
+@keyframes slideDownFade {
+  0% { opacity: 0; transform: translateY(-20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.empty-state {
+  animation: slideDownFade 0.6s cubic-bezier(.23,1.01,.32,1) both;
+}
+
+/* Button press animation */
+.select-option-btn-polished, .btn.route-btn, .clear-btn-polished {
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+}
+.select-option-btn-polished:active, .btn.route-btn:active, .clear-btn-polished:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px var(--shadow);
+}

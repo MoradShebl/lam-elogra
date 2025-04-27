@@ -1,6 +1,42 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import React from "react";
 
-const RouteRecommendation = () => {
+// ErrorBoundary component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch() {
+    // You can log error info here if needed
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-message" style={{margin: '30px 0', padding: '20px', borderRadius: '8px', background: '#fff0f0', color: '#b71c1c', textAlign: 'center'}}>
+          <h3>حدث خطأ غير متوقع</h3>
+          <p>{this.state.error?.message || "يرجى إعادة المحاولة لاحقًا."}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const getArrivalTime = (minutes) => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + minutes);
+  return now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+};
+
+const RECENT_KEY = 'recentDestinations';
+
+const DEFAULT_EMPTY_MESSAGE = "لم يتم العثور على خيارات نقل متاحة لهذه الوجهة.<br/>جرب وجهة أخرى أو تحقق من اتصالك بالإنترنت.";
+
+const RouteRecommendation = ({ emptyMessage = DEFAULT_EMPTY_MESSAGE }) => {
   const [userLocation, setUserLocation] = useState(null);
   const [destination, setDestination] = useState("");
   const [destinationCoords, setDestinationCoords] = useState(null);
@@ -9,6 +45,8 @@ const RouteRecommendation = () => {
   const [routeOptions, setRouteOptions] = useState([]);
   const [stations, setStations] = useState([]);
   const [showMap, setShowMap] = useState(false);
+  const [recentDestinations, setRecentDestinations] = useState([]);
+  const [selectedOption, setSelectedOption] = useState(null);
 
   // Load cached location on mount
   useEffect(() => {
@@ -17,6 +55,11 @@ const RouteRecommendation = () => {
     if (cachedLocation) {
       setUserLocation(JSON.parse(cachedLocation));
     }
+  }, []);
+
+  useEffect(() => {
+    const cached = localStorage.getItem(RECENT_KEY);
+    if (cached) setRecentDestinations(JSON.parse(cached));
   }, []);
 
   // Get user's current location
@@ -47,22 +90,14 @@ const RouteRecommendation = () => {
       setError("الرجاء إدخال وجهة");
       return;
     }
-
     setLoading(true);
     setError(null);
-    
     try {
-      // Using Nominatim API (OpenStreetMap's geocoding service)
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination)}`
       );
-      
-      if (!response.ok) {
-        throw new Error("فشل البحث عن الوجهة");
-      }
-      
+      if (!response.ok) throw new Error("فشل البحث عن الوجهة");
       const data = await response.json();
-      
       if (data && data.length > 0) {
         const location = data[0];
         setDestinationCoords({
@@ -70,8 +105,11 @@ const RouteRecommendation = () => {
           longitude: parseFloat(location.lon),
           displayName: location.display_name
         });
-        
-        // Get route options if we have both user location and destination
+        // Save to recent
+        let updated = [destination, ...recentDestinations.filter(d => d !== destination)];
+        if (updated.length > 5) updated = updated.slice(0, 5);
+        setRecentDestinations(updated);
+        localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
         if (userLocation) {
           fetchRouteOptions(userLocation, {
             latitude: parseFloat(location.lat),
@@ -82,7 +120,6 @@ const RouteRecommendation = () => {
         setError("لم يتم العثور على الوجهة. يرجى المحاولة بطريقة أخرى.");
       }
     } catch (err) {
-      console.error("Error searching destination:", err);
       setError(err.message || "حدث خطأ أثناء البحث عن الوجهة");
     } finally {
       setLoading(false);
@@ -101,7 +138,7 @@ const RouteRecommendation = () => {
         if (type === 'microbus') filter = '[minibus=yes]';
         const url = `https://overpass-api.de/api/interpreter?data=[out:json];node(around:1500,${lat},${lon})${filter};out;`;
         const res = await fetch(url);
-        if (!res.ok) throw new Error("فشل جلب محطات النقل الحكومية");
+        if (!res.ok) throw new Error("فشل جلب محطات النقل ");
         const data = await res.json();
         return (data.elements || []).map(e => ({
           id: e.id,
@@ -228,88 +265,130 @@ const RouteRecommendation = () => {
     if (url) window.open(url, "_blank");
   };
 
+  const handleRecentClick = (dest) => {
+    setDestination(dest);
+    setTimeout(() => searchDestination(), 0);
+  };
+
+  const handleClear = () => {
+    setDestination("");
+    setDestinationCoords(null);
+    setRouteOptions([]);
+    setStations([]);
+    setShowMap(false);
+    setError(null);
+    setSelectedOption(null);
+  };
+
+  // Retry handler for empty state
+  const handleRetry = () => {
+    if (destination) searchDestination();
+  };
+
   return (
-    <div className="route-recommendation-container enhanced-ui">
-      <h2>مخطط الرحلة الذكي</h2>
-      
-      <form onSubmit={handleSubmit} className="destination-form">
-        <div className="input-group">
-          <input
-            type="text"
-            className="card-input"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            placeholder="أدخل الوجهة"
-            required
-          />
-        </div>
-        
-        <button 
-          type="submit" 
-          className="btn route-btn"
-          disabled={loading}
-        >
-          {!userLocation ? "تحديد الموقع والبحث" : "بحث عن طرق حكومية وذكية"}
-        </button>
-      </form>
-      
-      {loading && (
-        <div className="loading">
-          <div className="spinner"></div>
-          <p>جاري البحث عن أفضل الطرق...</p>
-        </div>
-      )}
-      
-      {error && (
-        <div className="error-message">
-          <p>{error}</p>
-        </div>
-      )}
-      
-      {destinationCoords && (
-        <div className="destination-info">
-          <h3>الوجهة</h3>
-          <p>{destinationCoords.displayName}</p>
-        </div>
-      )}
-      
-      {showMap && stations[0] && stations[1] && (
-        <div className="map-container">
-          <iframe
-            src={`https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(stations[0].longitude, stations[1].longitude) - 0.01},${Math.min(stations[0].latitude, stations[1].latitude) - 0.01},${Math.max(stations[0].longitude, stations[1].longitude) + 0.01},${Math.max(stations[0].latitude, stations[1].latitude) + 0.01}&layer=mapnik&marker=${stations[0].latitude},${stations[0].longitude}`}
-            width="100%"
-            height="200"
-            frameBorder="0"
-            title="Route Map"
-            loading="lazy"
-          ></iframe>
-        </div>
-      )}
-      
-      {routeOptions && routeOptions.length > 0 && (
-        <div className="route-options enhanced-options">
-          <h3>خيارات النقل الحكومي المتاحة</h3>
-          <div className="options-list">
-            {routeOptions.map((option, index) => (
-              <div className={`route-option-card modern-card gov-card`} key={index}>
-                <div className="option-icon">{option.icon}</div>
-                <div className="option-details">
-                  <div className="option-name">{option.name}</div>
-                  <div className="option-metrics">
-                    <span>⏱️ {option.time} دقيقة</span>
-                    <span>💰 {option.cost} ريال</span>
+    <ErrorBoundary>
+      <Suspense fallback={<div className="loading"><div className="spinner"></div><p>جاري التحميل...</p></div>}>
+        <div className="route-recommendation-container-polished">
+          <h2 style={{marginBottom: 24, fontSize: 22, color: 'var(--second)', borderBottom: '2px solid var(--third)', paddingBottom: 8}}>مخطط الرحلة</h2>
+          {recentDestinations.length > 0 && (
+            <div className="recent-destinations-list">
+              {recentDestinations.map((dest, i) => (
+                <span className="recent-destination-pill" key={i} onClick={() => handleRecentClick(dest)}>{dest}</span>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="destination-form" style={{marginBottom: 24}}>
+            <div className="input-group" style={{marginBottom: 18}}>
+              <input
+                type="text"
+                className="card-input"
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                placeholder="أدخل الوجهة"
+                required
+                style={{fontSize: 16, padding: '10px 12px', borderRadius: 7, border: '1px solid var(--second)'}}
+              />
+            </div>
+            <button type="submit" className="btn route-btn" disabled={loading} style={{marginTop: 0, width: '100%', fontWeight: 600, fontSize: 16}}>
+              {!userLocation ? "تحديد الموقع والبحث" : "بحث عن طرق النقل"}
+            </button>
+            <button type="button" className="clear-btn-polished" onClick={handleClear}>مسح الكل</button>
+          </form>
+          {loading && (
+            <div className="loading" style={{margin: '30px 0'}}>
+              <div className="spinner"></div>
+              <p>جاري البحث عن أفضل الطرق...</p>
+            </div>
+          )}
+          {error && (
+            <div className="error-message" style={{margin: '30px 0', padding: '20px', borderRadius: '8px', background: '#fff0f0', color: '#b71c1c', textAlign: 'center'}}>
+              <p>{error}</p>
+            </div>
+          )}
+          {destinationCoords && (
+            <div className="destination-info" style={{marginBottom: 18}}>
+              <h3 style={{fontSize: 16, margin: 0, color: 'var(--second)'}}>الوجهة</h3>
+              <p style={{fontSize: 14, margin: 0}}>{destinationCoords.displayName}</p>
+            </div>
+          )}
+          {/* Show friendly message if no options found */}
+          {destinationCoords && !loading && !error && routeOptions && routeOptions.length === 0 && (
+            <div className="empty-state" style={{margin: '30px 0', padding: '24px', borderRadius: '10px', background: '#f8f8fa', color: '#888', textAlign: 'center', boxShadow: '0 2px 8px var(--shadow)'}}>
+              <div className="empty-state-text" style={{fontSize: 16, marginBottom: 16}} dangerouslySetInnerHTML={{__html: emptyMessage}} />
+              <button className="btn route-btn" style={{marginTop: 10, fontWeight: 600, fontSize: 15, background: 'var(--info)', color: '#fff', borderRadius: 8}} onClick={handleRetry} aria-label="إعادة المحاولة">
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+          {showMap && stations[0] && stations[1] && (
+            <div className="map-container" style={{marginBottom: 18}}>
+              <iframe
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(stations[0].longitude, stations[1].longitude) - 0.01},${Math.min(stations[0].latitude, stations[1].latitude) - 0.01},${Math.max(stations[0].longitude, stations[1].longitude) + 0.01},${Math.max(stations[0].latitude, stations[1].latitude) + 0.01}&layer=mapnik&marker=${stations[0].latitude},${stations[0].longitude}`}
+                width="100%"
+                height="200"
+                frameBorder="0"
+                title="Route Map"
+                loading="lazy"
+                style={{borderRadius: 8, border: '1px solid var(--third)'}}
+              ></iframe>
+            </div>
+          )}
+          {routeOptions && routeOptions.length > 0 && (
+            <div className="route-options enhanced-options" style={{marginTop: 10}}>
+              <h3 style={{fontSize: 18, marginBottom: 18, color: 'var(--second)'}}>خيارات النقل المتاحة</h3>
+              <div className="options-list" style={{display: 'flex', flexDirection: 'column', gap: 18}}>
+                {routeOptions.map((option, index) => (
+                  <div
+                    className={`route-option-card-polished${selectedOption === index ? ' selected' : ''}`}
+                    key={index}
+                    onClick={() => setSelectedOption(index)}
+                    tabIndex={0}
+                    style={{outline: selectedOption === index ? '2px solid var(--info)' : 'none', cursor: 'pointer'}}
+                  >
+                    <div className="option-details" style={{textAlign: 'right'}}>
+                      <div className="option-name" style={{fontWeight: 700, fontSize: 16, marginBottom: 4}}>{option.name}</div>
+                      <div className="option-metrics" style={{display: 'flex', flexDirection: 'row', gap: 18, fontSize: 14, marginBottom: 6}}>
+                        <span>الوقت المتوقع: {option.time} دقيقة</span>
+                        <span>التكلفة التقريبية: {option.cost} جنيه</span>
+                      </div>
+                      <div className="arrival-time-label">وقت الوصول المتوقع: {getArrivalTime(option.time)}</div>
+                      <div className="gov-label" style={{fontSize: 13, color: 'var(--info)', fontWeight: 500}}>{option.label}</div>
+                    </div>
+                    <button
+                      className="select-option-btn-polished"
+                      style={{width: '100%', marginTop: 8, fontWeight: 600, fontSize: 15}}
+                      onClick={() => { setSelectedOption(index); navigateWithOption(option); }}
+                    >
+                      اختيار
+                    </button>
                   </div>
-                  <div className="gov-label">🚏 {option.label}</div>
-                </div>
-                <button className="btn select-option-btn" onClick={() => navigateWithOption(option)}>
-                  اختيار
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </Suspense>
+    </ErrorBoundary>
   );
 };
 
